@@ -1,0 +1,22 @@
+# Backend
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.env
+.venv
+venv/
+ENV/
+*.db
+*.log
+
+# Frontend
+**/node_modules/
+**/dist/
+.DS_Store
+*.local
+
+# Infrastructure
+.DS_Store
+.idea/
+.vscode/
