@@ -106,6 +106,11 @@ class Citation(BaseModel):
     id: int
     title: str
     url: str
+    fetched_at: Optional[str] = None
+    published: Optional[str] = None
+    content_hash: Optional[str] = None
+    evidence_kind: Optional[str] = None
+    chunk_id: Optional[str] = None
 
 
 class VerificationResult(BaseModel):
@@ -157,7 +162,7 @@ async def research(request: ResearchRequest, req: Request):
     
     This endpoint:
     - Gathers information from multiple web sources
-    - Uses Claude LLM to synthesize research
+    - Uses Gemini to synthesize research
     - Verifies facts across sources to reduce hallucinations
     - Returns well-cited, verified information
     
