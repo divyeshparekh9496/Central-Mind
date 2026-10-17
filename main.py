@@ -22,6 +22,7 @@ import uvicorn
 from config import Config
 from services.research_agent import ResearchAgent
 from services.rag.pipeline import utcnow
+from services.adventure import AdventureService
 from services.safeguards import sanitize_query, RateLimiter, cleanup_cache_periodically
 
 app = FastAPI(
@@ -69,6 +70,58 @@ def init_db():
 
 init_db()
 init_learner_table()
+
+
+adventure = AdventureService()
+
+class ExplorerRequest(BaseModel):
+    session_id: str = Field(..., min_length=8, max_length=80)
+
+class MissionRequest(ExplorerRequest):
+    topic: Literal["planets", "saturn", "blackholes", "stars"]
+
+class MissionAnswerRequest(ExplorerRequest):
+    attempt_id: str = Field(..., max_length=80)
+    choice: int = Field(..., ge=0, le=2)
+
+class ExplorerQuestion(ExplorerRequest):
+    query: str = Field(..., min_length=1, max_length=500)
+    topic: Literal["planets", "saturn", "blackholes", "stars"] = "planets"
+    live: bool = False
+
+@app.get("/adventure/missions")
+async def adventure_missions():
+    return {"missions": adventure.missions()}
+
+@app.get("/adventure/state")
+async def adventure_state(session_id: str):
+    try:return adventure.state(session_id)
+    except ValueError as error:raise HTTPException(400, str(error))
+
+@app.post("/adventure/quiz")
+async def adventure_quiz(request: MissionRequest):
+    try:return adventure.start(request.session_id,request.topic)
+    except ValueError as error:raise HTTPException(400, str(error))
+
+@app.post("/adventure/answer")
+async def adventure_answer(request: MissionAnswerRequest):
+    try:return adventure.answer(request.session_id,request.attempt_id,request.choice)
+    except ValueError as error:raise HTTPException(400, str(error))
+
+@app.post("/adventure/forget")
+async def adventure_forget(request: ExplorerRequest):
+    try:return adventure.forget(request.session_id)
+    except ValueError as error:raise HTTPException(400, str(error))
+
+@app.post("/adventure/ask")
+async def adventure_ask(request: ExplorerQuestion):
+    if request.live:
+        if not nova._has_credentials:
+            raise HTTPException(503,"A grown-up needs to configure the connected tutor. You can use the local guide meanwhile.")
+        result=await chat(ChatRequest(query=request.query, session_id=request.session_id))
+        return {"response":result["response"],"sources":result["sources"],
+                "topic":request.topic,"mode":"connected_rag_tutor"}
+    return adventure.guide(request.query,request.topic)
 
 
 # Request/Response Models

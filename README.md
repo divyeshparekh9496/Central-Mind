@@ -1,102 +1,117 @@
-# Central-Mind · Evidence-Ranked Research Assistant
+# Central Mind · A Voice-First Space Adventure for Kids
 
-Central-Mind combines web-grounded research with an astronomy learning companion. The root FastAPI app now has a **persistent retrieval-augmented generation (RAG) pipeline**, a trained **supervised evidence-ranking baseline**, and explicit source-freshness metadata.
+**Big questions. Cosmic adventures.** Meet Nova, a friendly astronomy companion: talk about planets, explore Saturn’s rings, investigate black holes, and try playful discovery challenges.
 
-**Best-aligned ML task: supervised evidence ranking.** Retrieve passages with BM25, optionally rerank them with a trained model, and give the generator traceable evidence. A transformer cross-encoder is supported as an optional neural reranker. Ranking relevance is separate from proving whether a claim is true.
+The experience is designed around curiosity, not an exam. Children can talk, type, tap a choice, ask for a hint, or skip the quiz. There are no timers, lost stars, leaderboards or penalties for a wrong answer.
 
-## What is implemented
+## Play the Space Club
 
-- Live web retrieval for research, and NASA/arXiv abstracts for the root tutoring endpoint.
-- SQLite document storage, overlapping passage chunks, content hashes and timestamp-based expiry.
-- BM25 candidate retrieval; optional bundled logistic learning-to-rank model or pretrained cross-encoder.
-- Citation metadata bound to the exact extracted passage, including when another source fails to load.
-- Fresh searches on every root research/tutoring request; no silently reused stale answer cache.
-- No-current-evidence responses when retrieval fails or finds no matching passages.
-- A reproducible SciFact training/evaluation pipeline with per-query metrics and data attribution.
-
-The research generator currently uses **Google Gemini**. The astronomy tutor uses **Amazon Nova / Bedrock**. The included relevance model runs locally and does not require either provider's API key.
-
-## ML results
-
-On **300 held-out SciFact retrieval queries**, after training on **807 queries** and choosing regularization within the training split:
-
-| Retrieval configuration | MRR@10 | nDCG@10 | Recall@5 |
-| --- | ---: | ---: | ---: |
-| **BM25 baseline — default** | **0.6340** | **0.6658** | **0.7226** |
-| Trained logistic reranker | 0.6125 | 0.6530 | 0.7034 |
-
-The trained model did not beat BM25 in this experiment, so the stronger measured baseline stays the default. The cross-encoder backend is optional and has not yet been benchmarked in this project. These are evidence-retrieval metrics, not factual-answer accuracy or proof of hallucination reduction.
-
-[Architecture, experiment and limitations](docs/RAG_AND_ML.md) · [Evaluation JSON](docs/retrieval-evaluation.json) · [Per-query CSV](docs/retrieval-evaluation.csv) · [Trained model](models/evidence_ranker.json)
-
-## Offline retrieval demo
-
-Python 3.10+ recommended. Core passage storage, BM25 and JSON-model inference use Python's standard library. No cloud key is needed for these commands:
+Python **3.10+**. The default clubhouse runs without API keys, cloud dependencies or package installation:
 
 ```bash
-python -m ml.rag_cli ingest docs/RAG_AND_ML.md --title "Central-Mind RAG design"
-python -m ml.rag_cli search "How is evidence kept current?"
-# Explicitly enable the bundled trained reranker:
-python -m ml.rag_cli --model models/evidence_ranker.json search "How is evidence kept current?"
+git clone https://github.com/divyeshparekh9496/Central-Mind.git
+cd Central-Mind
+python adventure_server.py
 ```
 
-The demo indexes a local document. It does not fetch current web information. Stored passages expire after 24 hours by default; re-ingest the source to refresh its contents.
+Open **http://127.0.0.1:8000**. Choose a destination, ask Nova a question, and try a little discovery challenge. The default guide is a limited, hand-authored astronomy collection, **not an unrestricted AI chatbot**.
 
-## Run the root API
+| Destination | Adventure |
+| --- | --- |
+| Planet Hop | Find our home, meet Jupiter and discover orbits |
+| Ring Detective | Investigate Saturn and its icy rings |
+| Black Hole Lookout | Learn about light, gravity and the event horizon from a pretend safe spaceship |
+| Star Explorer | Meet the Sun and discover where starlight comes from |
+
+Each destination has three NASA-linked questions with hints and explanations. Discovery stars reward the first correct attempt on a question; incorrect answers never remove stars. Repeat practice does not repeatedly inflate mastery or rewards.
+
+### Talk, listen or tap
+
+- Press the microphone to ask a question; speech is converted to text by the browser and follows the same question route as typing.
+- During a challenge, press **Say my answer** and say A, B, C, or the exact option text. The server grades the recognized choice.
+- **Read it aloud** uses the browser’s text-to-speech. **Quiet mode** stops speech and listening.
+- Voice depends on browser support and microphone permission. Typing and buttons remain available; recordings never start automatically.
+- A grown-up can opt into connected research when using the configured cloud app. The local server explains when that mode is unavailable.
+
+## Adaptive learning: Bayesian Knowledge Tracing
+
+The child sees missions and discoveries. Underneath, **Bayesian Knowledge Tracing (BKT)** maintains a separate mastery estimate for each astronomy topic and guides question difficulty.
+
+```mermaid
+flowchart LR
+    V[Voice or typed curiosity] --> N[Nova space companion]
+    N --> M[Choose a mission]
+    M --> Q[Optional discovery challenge]
+    Q --> G[Server-side choice grading]
+    G --> B[Bayesian topic-mastery update]
+    B --> A[Choose next question difficulty]
+    A --> Q
+```
+
+BKT is a probabilistic latent-knowledge model. It updates a prior mastery probability using whether an answer was correct, accounting for guessing and slips, then applies a learning transition. This implementation starts with prior **0.25**, learning probability **0.12**, guess probability **1/3**, and slip probability **0.10**. Quiz choices have three options.
+
+**These parameters are configured assumptions, not fitted on children’s data.** No learning-outcome gains or validated child-development claims are made. The app performs Bayesian inference; fitting and evaluating the parameters on an appropriately collected dataset is future work. The estimate never appears as a high-stakes grade or public ranking.
+
+[Implementation](services/adventure.py) · [BKT reference and training-library examples](https://github.com/CAHLR/pyBKT)
+
+## What is stored
+
+A random explorer session ID, per-topic mastery, question IDs and graded outcomes are stored in a local SQLite database under `data/`. The browser keeps its random ID in session storage. The adventure progress service does not store names, raw audio or free-form voice transcripts.
+
+Browser speech providers may process audio online; the grown-up panel explains this before microphone use. **Delete this explorer’s progress** removes the active session’s quiz and mastery records. Server records otherwise remain until deleted. This is a development app, not a certified child-privacy or production deployment.
+
+## Connected tutor and evidence-grounded RAG
+
+The root FastAPI app serves the same clubhouse plus the existing connected research and astronomy tutor:
 
 ```bash
 python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 cp env.example .env
-# Set GOOGLE_API_KEY and configure AWS credentials for cloud features as needed.
+# Configure Google and AWS providers as needed.
 python main.py
 ```
 
-The existing app includes cloud-dependent Nova and research services. A full live run needs their dependencies and provider configuration; offline retrieval does not. The `astrovoice/` directory is a separate astronomy app and does not yet share the root app's new RAG implementation.
+The local guide and quizzes still work in this app. Connected questions use NASA/arXiv evidence and the Nova tutor; research endpoints use Gemini. Nova’s prompt is now short, warm, age-aware and explicit about pretend adventures. A missing cloud configuration is reported instead of silently pretending that a live AI response was generated.
 
-| Endpoint | Behavior |
-| --- | --- |
-| `POST /research` | Live web search → indexed/ranked passages → Gemini answer with citation metadata |
-| `POST /chat` | Live NASA/arXiv retrieval → indexed/ranked abstracts → Nova tutoring |
-| `GET /rag/search?query=...` | Inspect previously indexed, unexpired evidence; no live fetch or generation |
-| `GET /health` | Existing health endpoint |
+Research RAG includes live retrieval, SQLite passages, content hashes, citation alignment and configurable expiry. The root research/tutoring flows refresh when asked; they are not continuous monitors. The curated offline guide has NASA source links and a **review date of October 17, 2026**. It is not live-refreshed, and review dates are not publication dates.
 
-Research response metadata includes `ranker`, `freshness_checked_at`, `freshness_policy` and `retrieval_status`. Each source retains its URL, retrieval time, content hash and evidence kind. A fetched page is not necessarily newly published; publication dates are not invented.
+The separate `astrovoice/` React app is an earlier interface. **The root Space Club is the primary kids’ experience**; its new adventure endpoints, BKT state and browser-voice path are not claimed to be installed in that separate app.
 
-### Optional learned ranking
+## Supporting ML experiment: evidence ranking
 
-```bash
-# Lightweight trained model; no model-download dependency at inference:
-export RAG_MODEL_PATH=models/evidence_ranker.json
-# Or a pretrained transformer cross-encoder:
-pip install -r requirements-transformers.txt
-export RAG_CROSS_ENCODER=cross-encoder/ms-marco-MiniLM-L6-v2
-```
+A trained supervised logistic evidence reranker and optional pretrained transformer cross-encoder support the research layer. This is a separate task from adapting quizzes. On 300 SciFact retrieval queries, BM25 scored nDCG@10 **0.6658**, compared with **0.6530** for the trained linear reranker; BM25 remains the stronger measured default. The cross-encoder has not been benchmarked here.
 
-The cross-encoder takes precedence when configured and downloads weights on first use. Neither backend is a truth classifier. Optional model configuration errors are explicit, rather than silently reporting a learned model while running a lexical fallback.
+[Full RAG/ML report and limitations](docs/RAG_AND_ML.md) · [Raw results](docs/retrieval-evaluation.csv) · [Model](models/evidence_ranker.json)
 
-## Train and verify
+## Verify
 
 ```bash
 pip install -r requirements-ml.txt
-python -m ml.download_scifact
-python -m ml.train_ranker
+# Research integration tests also need the lightweight web dependencies:
+pip install python-dotenv httpx beautifulsoup4 lxml tenacity
 python -m unittest discover -s tests -v
 ```
 
-Raw SciFact data and the local SQLite index are git-ignored under `data/`. Training coefficients and evaluation reports are included. See the [dataset attribution and methodology](docs/RAG_AND_ML.md#reproduce) before reusing the data or metrics.
+Tests cover the BKT update, adaptive question selection, topic isolation, repeated submissions, reward integrity, progress deletion, passage freshness and citation alignment. The offline server and browser-voice logic require no LLM API key. Live cloud generation and microphone playback need separate environment-specific checks.
 
-## Freshness and limits
+## Project map
 
-The root research and tutoring flows refresh evidence **when asked**. Stored-only retrieval applies a configurable age limit. Failed live fetches do not authorize reuse of old indexed pages; explicitly identified live search snippets can be used when page extraction fails. If no usable matching evidence remains, the service abstains.
+| Path | Purpose |
+| --- | --- |
+| `static/index.html` | Responsive Space Club, mission cards, optional voice and quizzes |
+| `adventure_server.py` | Local, dependency-free clubhouse server |
+| `services/adventure.py` | Mission content, deterministic grading, BKT and SQLite progress |
+| `main.py` | Connected API plus matching `/adventure/*` endpoints |
+| `services/nova_service.py` | Cloud voice/tutor integration and companion prompts |
+| `services/rag/` | Evidence storage, retrieval and optional relevance reranking |
+| `ml/` | Reproducible research-ranking experiments and retrieval CLI |
 
-This is not continuous monitoring, and search indexes can lag. The original claim checker remains rule-based; confidence fields are uncalibrated heuristics. The retrieval experiment does not establish general-web accuracy, reliable contradiction detection, prompt-injection resistance, or production readiness. Cloud generation and the optional cross-encoder require separate live evaluation.
+## Science and learning references
 
-## References
-
-- [Sentence Transformers: retrieve and rerank](https://www.sbert.net/examples/sentence_transformer/applications/retrieve_rerank/README.html)
-- [Anthropic: contextual retrieval](https://www.anthropic.com/engineering/contextual-retrieval)
-- [Microsoft: freshness-aware retrieval](https://learn.microsoft.com/en-us/azure/search/agentic-retrieval-how-to-configure-freshness)
-- [SciFact data, paper and licensing](https://github.com/allenai/scifact)
-- [BEIR benchmark](https://github.com/beir-cellar/beir)
+- [NASA solar system](https://science.nasa.gov/solar-system/)
+- [NASA Saturn facts](https://science.nasa.gov/saturn/facts/)
+- [NASA black holes](https://science.nasa.gov/universe/black-holes/)
+- [NASA Sun facts](https://science.nasa.gov/sun/facts/)
+- [pyBKT: Bayesian Knowledge Tracing](https://github.com/CAHLR/pyBKT)
