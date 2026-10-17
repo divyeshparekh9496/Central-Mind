@@ -92,3 +92,12 @@ class AdventureTests(unittest.TestCase):
         self.assertTrue(result['sources'][0]['url'].startswith('https://science.nasa.gov/'))
         self.assertEqual(result['sources'][0]['reviewed_on'],'2026-10-17')
         self.assertEqual(self.service.guide('what is my name')['sources'],[])
+
+    def test_successful_retry_can_earn_star_without_recounting_mastery(self):
+        first,_=self.answer_question('planets',False)
+        self.answer_question('planets',False)
+        self.answer_question('planets',False)
+        item,result=self.answer_question('planets',True)
+        self.assertEqual(item['question']['id'],first['question']['id'])
+        self.assertTrue(result['star_earned'])
+        self.assertFalse(result['mastery_updated'])

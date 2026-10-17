@@ -117,15 +117,17 @@ class AdventureService:
             old=conn.execute('SELECT probability FROM topic_mastery WHERE session=? AND topic=?',(session,topic)).fetchone()
             prior=old[0] if old else .25
             # A repeated question is practice, not new evidence of mastery.
-            seen=conn.execute('SELECT 1 FROM quiz_attempts WHERE session=? AND question=? AND result IS NOT NULL',(session,qid)).fetchone()
+            previous=conn.execute('SELECT result FROM quiz_attempts WHERE session=? AND question=? AND result IS NOT NULL',(session,qid)).fetchall()
+            seen=bool(previous)
+            rewarded=any(json.loads(row[0]).get('correct_for_reward',False) for row in previous)
             probability=prior if seen else update_mastery(prior,correct)
             conn.execute('INSERT OR REPLACE INTO topic_mastery VALUES (?,?,?)',(session,topic,probability))
             result={'correct':correct,'feedback':('Cosmic discovery! ' if correct else 'Good exploring! Let\'s discover why. ')+q['explanation'],
                     'source_url':MISSIONS[topic]['source_url'],
                     'reviewed_on':MISSIONS[topic]['reviewed_on'],'mastery_updated':not bool(seen),
-                    'star_earned':bool(correct and not seen),'topic':topic}
-            # Stars are only awarded on the first graded attempt for a question.
-            result['correct_for_reward']=bool(correct and not seen)
+                    'star_earned':bool(correct and not rewarded),'topic':topic}
+            # A later successful retry can earn its star, but never twice.
+            result['correct_for_reward']=bool(correct and not rewarded)
             conn.execute('UPDATE quiz_attempts SET result=? WHERE id=?',(json.dumps(result),attempt))
         result['learner']=self.state(session)
         return result
