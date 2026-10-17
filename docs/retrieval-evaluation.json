@@ -1,0 +1,53 @@
+{
+  "dataset": "BEIR SciFact",
+  "evaluation_queries": 300,
+  "training_queries": 807,
+  "removed_exact_query_overlap": [
+    "871",
+    "1291"
+  ],
+  "validation_groups": 162,
+  "validation_C_scores": [
+    {
+      "C": 0.1,
+      "ndcg_at_10": 0.6366800264323705
+    },
+    {
+      "C": 1,
+      "ndcg_at_10": 0.6410085216271514
+    },
+    {
+      "C": 10,
+      "ndcg_at_10": 0.6410085216271514
+    }
+  ],
+  "chosen_C": 1,
+  "seed": 42,
+  "summary": {
+    "bm25": {
+      "mrr_at_10": 0.6340119047619047,
+      "ndcg_at_10": 0.6657962116003945,
+      "recall_at_5": 0.7226111111111111,
+      "candidate_recall_at_50": 0.8750555555555555
+    },
+    "learned": {
+      "mrr_at_10": 0.6125277777777778,
+      "ndcg_at_10": 0.652984668150275,
+      "recall_at_5": 0.7034444444444444,
+      "candidate_recall_at_50": 0.8750555555555555
+    }
+  },
+  "model_sha256": "a0ede133cec0be7bdd441b9bd448003199486186e98a63f0c3b8ad946cb1e5cb",
+  "limitations": [
+    "One split/seed; no claim verification or answer-quality measurement.",
+    "Same BM25 top-50 candidates for both methods; no injected gold evidence in evaluation.",
+    "Relevance is annotated evidence retrieval, including supporting AND refuting documents.",
+    "Unjudged documents treated as nonrelevant; domain transfer to general web pages is unmeasured."
+  ],
+  "data_provenance": {
+    "url": "https://public.ukp.informatik.tu-darmstadt.de/thakur/BEIR/datasets/scifact.zip",
+    "sha256": "536e14446a0ba56ed1398ab1055f39fe852686ecad24a6306c80c490fa8e0165",
+    "upstream": "https://github.com/allenai/scifact",
+    "license": "Claims: CC BY 4.0; abstracts: ODC-By 1.0; see upstream LICENSE.md"
+  }
+}

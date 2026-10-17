@@ -21,6 +21,7 @@ from typing import Optional, Literal
 import uvicorn
 from config import Config
 from services.research_agent import ResearchAgent
+from services.rag.pipeline import utcnow
 from services.safeguards import sanitize_query, RateLimiter, cleanup_cache_periodically
 
 app = FastAPI(
@@ -290,6 +291,16 @@ async def research_stream(
     return StreamingResponse(generate(), media_type="text/event-stream")
 
 
+@app.get("/rag/search")
+async def search_indexed_evidence(query: str = Query(..., min_length=3, max_length=500)):
+    """Inspect already indexed passages; this endpoint does not refresh the web."""
+    passages = await asyncio.to_thread(research_agent.rag.retrieve, query)
+    return {"query": query, "passages": passages,
+            "ranker": research_agent.rag.ranker.name,
+            "freshness_policy": "stored passages within configured TTL; no live refresh",
+            "score_meaning": "relevance, not truth or publication recency"}
+
+
 @app.get("/cache/stats")
 async def cache_stats():
     """
@@ -361,67 +372,45 @@ async def chat(request: ChatRequest):
     profile = LearnerProfile.load(request.session_id)
     profile.record_exchange()
 
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute(
-        "SELECT response, confidence, sources FROM semantic_cache WHERE query = ?",
-        (request.query.lower(),),
-    )
-    cached = c.fetchone()
-    conn.close()
-
-    if cached:
-        profile.save()
-        full_text = cached[0]
-        check_q = _extract_check_question(full_text)
-        return {
-            "response": _strip_check_question(full_text),
-            "check_question": check_q,
-            "confidence": cached[1],
-            "sources": json.loads(cached[2]),
-            "cached": True,
-            "learner": profile.to_dict(),
-        }
-
-    try:
-        arxiv_results, nasa_results = await asyncio.gather(
-            arxiv.search(request.query),
-            nasa.search_technical_reports(request.query),
-        )
-        sources_list = arxiv_results + nasa_results
-        source_context = ""
-        for i, s in enumerate(sources_list[:6]):
-            source_context += (
-                f"\n[Source {i+1}]: {s.get('title','')}\n"
-                f"  {s.get('summary', s.get('abstract', ''))[:300]}\n"
-            )
-    except Exception as e:
-        print(f"[RAG] Error: {e}")
-        source_context = ""
-        sources_list = []
-
-    full_response = await nova.invoke_nova_lite_chat(
-        prompt=request.query,
-        system_prompt="",
-        context=source_context,
-        level=profile.level,
-    )
-
+    # Current source retrieval on every turn; do not reuse indefinitely cached
+    # answers across dates or learner levels.
+    retrieved_at = utcnow().isoformat()
+    results = await asyncio.gather(
+        arxiv.search(request.query), nasa.search_technical_reports(request.query),
+        return_exceptions=True)
+    documents = []
+    for group in results:
+        if not isinstance(group, list):
+            continue
+        for source in group:
+            title = source.get("title", "")
+            summary = source.get("summary") or source.get("abstract", "")
+            url = source.get("url")
+            if not url and str(source.get("id", "")).isdigit():
+                url = f"https://ntrs.nasa.gov/citations/{source['id']}"
+            if url and isinstance(title, str) and isinstance(summary, str) and summary.strip():
+                documents.append({"title": title, "text": summary, "url": url,
+                                  "fetched_at": retrieved_at, "published": source.get("published"),
+                                  "evidence_kind": "live_api_abstract"})
+    hits = await asyncio.to_thread(research_agent.rag.refresh_and_retrieve,
+                                   request.query, documents, 6)
+    sources_list = [{k:v for k,v in hit.items() if k != "text"} for hit in hits]
+    source_context = "\n\n".join(
+        f"[Source {i+1}]: {hit['title']}\nURL: {hit['url']}\n{hit['text']}"
+        for i,hit in enumerate(hits))
+    if hits:
+        full_response = await nova.invoke_nova_lite_chat(
+            prompt=request.query,
+            system_prompt="",
+            context=source_context,
+            level=profile.level)
+    else:
+        full_response = "No usable current research sources were retrieved. Please retry or provide a source."
     check_q = _extract_check_question(full_response)
     answer_body = _strip_check_question(full_response)
-
-    has_source = "[Source" in full_response or "[Verified" in full_response
-    confidence = 0.95 if has_source else 0.6
-
-    conn = sqlite3.connect(DB_PATH)
-    try:
-        conn.execute(
-            "INSERT OR REPLACE INTO semantic_cache (query, response, confidence, sources) VALUES (?, ?, ?, ?)",
-            (request.query.lower(), full_response, confidence, json.dumps(sources_list[:5])),
-        )
-        conn.commit()
-    finally:
-        conn.close()
+    # Retain numeric API compatibility without presenting citation presence as
+    # 95% factual accuracy. This is explicitly uncalibrated, not model confidence.
+    confidence = 0.5 if hits else 0.0
 
     topic_words = [w for w in request.query.split() if len(w) > 3]
     topic = topic_words[-1].strip('?.,!').capitalize() if topic_words else request.query.split()[-1].capitalize()
@@ -432,8 +421,12 @@ async def chat(request: ChatRequest):
         "response": answer_body,
         "check_question": check_q,
         "confidence": confidence,
-        "sources": sources_list[:5],
+        "sources": sources_list,
         "cached": False,
+        "freshness_checked_at": retrieved_at,
+        "freshness_policy": "live_refresh_every_request",
+        "confidence_type": "uncalibrated_heuristic",
+        "ranker": research_agent.rag.ranker.name,
         "learner": profile.to_dict(),
     }
 

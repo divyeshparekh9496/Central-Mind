@@ -1,0 +1,2 @@
+# Optional pretrained neural cross-encoder; downloads weights on first use.
+sentence-transformers>=3,<6

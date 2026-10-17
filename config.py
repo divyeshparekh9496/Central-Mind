@@ -37,3 +37,11 @@ class Config:
     CIRCUIT_BREAKER_THRESHOLD = int(os.getenv("CIRCUIT_BREAKER_THRESHOLD", 5))
     MAX_QUERY_LENGTH = int(os.getenv("MAX_QUERY_LENGTH", 500))
 
+
+    # Research RAG: source checks happen on every request. TTL only gates
+    # stored passages for offline retrieval, not whether online refresh occurs.
+    RAG_DB_PATH = os.getenv("RAG_DB_PATH", "data/rag.sqlite3")
+    RAG_MODEL_PATH = os.getenv("RAG_MODEL_PATH", "") or None
+    RAG_CROSS_ENCODER = os.getenv("RAG_CROSS_ENCODER", "") or None
+    RAG_MAX_AGE_HOURS = float(os.getenv("RAG_MAX_AGE_HOURS", 24))
+    RAG_TOP_K = int(os.getenv("RAG_TOP_K", 6))
