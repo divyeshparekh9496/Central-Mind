@@ -13,7 +13,7 @@ class ArxivConnector:
             "search_query": f"all:{query} AND cat:astro-ph*",
             "start": 0,
             "max_results": max_results,
-            "sortBy": "relevance",
+            "sortBy": "lastUpdatedDate",
             "sortOrder": "descending"
         }
         
@@ -33,6 +33,7 @@ class ArxivConnector:
                 "summary": entry.find('atom:summary', namespace).text.strip(),
                 "url": entry.find('atom:id', namespace).text,
                 "authors": [a.find('atom:name', namespace).text for a in entry.findall('atom:author', namespace)],
-                "published": entry.find('atom:published', namespace).text
+                "published": entry.find('atom:published', namespace).text,
+                "updated": entry.find('atom:updated', namespace).text if entry.find('atom:updated', namespace) is not None else None
             })
         return entries

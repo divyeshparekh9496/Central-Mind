@@ -1,3 +1,5 @@
+> The primary kids’ Space Club is now served from the repository root. Run `python adventure_server.py` there. This directory contains the earlier React/cloud interface and does not yet share the new adventure quiz/BKT endpoints.
+
 # 🚀 AstroVoice - Nova-Powered Space Assistant (Free Tier MVP)
 
 A production-ready, voice-first astrophysics research assistant using Amazon Nova models and a single Docker container.
